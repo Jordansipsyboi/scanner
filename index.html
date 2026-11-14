@@ -200,6 +200,9 @@ details.acc[open] summary::after{content:"–"}
 .tune button:active{background:rgba(255,255,255,.28)}
 .tune .tname{font-size:12px;font-weight:600;color:#fff;min-width:64px;text-align:center}
 .tune .sp{flex:1}
+.explain{font-size:12px;line-height:1.4;color:rgba(255,255,255,.82);margin-top:2px}
+.explain b{color:#fff;font-weight:600}
+.explain:empty{display:none}
 .loupe{position:fixed;width:124px;height:124px;border-radius:50%;border:3px solid #fff;box-shadow:0 8px 24px rgba(0,0,0,.45);pointer-events:none;z-index:40;background:#000}
 .sock{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;background:var(--card);border-radius:22px;padding:14px 16px}
 .sock svg{width:74px;height:auto}
@@ -369,6 +372,7 @@ details.acc[open] summary::after{content:"–"}
       <div class="qstats" id="measQuick"></div>
       <div class="note" id="measNote"></div>
       <div class="tune" data-for="meas"><button data-act="prev" aria-label="Previous point">‹</button><span class="tname"></span><button data-act="next" aria-label="Next point">›</button><span class="sp"></span><button data-d="-1,0" aria-label="Nudge left">←</button><button data-d="0,-1" aria-label="Nudge up">↑</button><button data-d="0,1" aria-label="Nudge down">↓</button><button data-d="1,0" aria-label="Nudge right">→</button></div>
+      <div class="explain" aria-live="polite"></div>
     </div>
     <div class="cam-nav" id="measNav">
       <div class="dots"><i class="done"></i><i class="on"></i><i></i><i></i></div>
@@ -402,6 +406,7 @@ details.acc[open] summary::after{content:"–"}
     <div class="review-info" id="sideSheet" hidden>
       <div class="note" id="sideNote">Drag each point onto the exact spot. A magnifier shows what is under your finger.</div>
       <div class="tune" data-for="side"><button data-act="prev" aria-label="Previous point">‹</button><span class="tname"></span><button data-act="next" aria-label="Next point">›</button><span class="sp"></span><button data-d="-1,0" aria-label="Nudge left">←</button><button data-d="0,-1" aria-label="Nudge up">↑</button><button data-d="0,1" aria-label="Nudge down">↓</button><button data-d="1,0" aria-label="Nudge right">→</button></div>
+      <div class="explain" aria-live="polite"></div>
     </div>
     <div class="cam-nav" id="sideCtl">
       <div class="dots"><i class="done"></i><i class="done"></i><i class="on"></i><i></i></div>
@@ -619,7 +624,27 @@ function bindTune(key,shot){
   el.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const p=shot.pts[shot.sel];if(!p)return;const [dx,dy]=b.dataset.d.split(',').map(Number),k=Math.max(1,shot.canvas.width/1000);
     p[0]+=dx*k;p[1]+=dy*k;drawShot(shot);clearTimeout(t);t=setTimeout(()=>shot.onChange(),250)});
 }
-function syncTune(shot){if(!shot.tune)return;const nm=(shot.names&&shot.names[shot.sel])||(shot.kind==='corners'?`Corner ${shot.sel+1}`:`Point ${shot.sel+1}/${shot.pts.length}`);shot.tune.querySelector('.tname').textContent=shot.pts.length?nm:'—'}
+/* plain-language help for each point, shown under the arrows */
+const SIDE_HELP={
+  Heel:'<b>Heel</b> — the back of your heel, right where it touches the floor.',
+  Toe:'<b>Toe</b> — the tip of your big toe, on the floor. Heel to toe is your foot length.',
+  'Toe box':'<b>Toe box</b> — the top of your big toe joint. Shows how tall the front of the shoe needs to be.',
+  Instep:'<b>Instep</b> — the highest point on top of your foot, where the laces sit. A high instep makes shoes feel tight on top.',
+  Arch:'<b>Arch</b> — the highest point of the gap under your foot. Shows if your arch is high, normal or flat.'};
+function outlineRegion(i,n){
+  if(i===0)return ['Heel','<b>Heel</b> — the very back of your heel.'];
+  const half=n/2;if(i===half)return ['Toe tip','<b>Toe tip</b> — the end of your longest toe. Heel to toe tip is your foot length.'];
+  const f=i<half?i/half:(n-i)/half;
+  if(f<.28)return ['Heel edge','<b>Heel edge</b> — the side of your heel. Sets your heel width (how snug the back of a shoe feels).'];
+  if(f<.55)return ['Midfoot','<b>Midfoot</b> — the middle of your foot, where the arch is on the inner side.'];
+  if(f<.8)return ['Ball','<b>Ball</b> — the widest part of your foot, behind the toes. This sets your shoe width.'];
+  return ['Toes','<b>Toes</b> — the edge around your toes. Shows how much room the toe box needs.'];
+}
+function syncTune(shot){if(!shot.tune)return;let nm=(shot.names&&shot.names[shot.sel])||(shot.kind==='corners'?`Corner ${shot.sel+1}`:`Point ${shot.sel+1}/${shot.pts.length}`),help='';
+  if(shot.kind==='side')help=SIDE_HELP[nm]||'';
+  if(shot.kind==='meas'&&shot.pts.length){const r=outlineRegion(shot.sel,shot.pts.length);nm=`${r[0]} · ${shot.sel+1}/${shot.pts.length}`;help=r[1]}
+  shot.tune.querySelector('.tname').textContent=shot.pts.length?nm:'—';
+  const ex=shot.tune.parentElement.querySelector('.explain');if(ex)ex.innerHTML=help}
 function updatePrompt(shot){shot.chip.textContent=shot.pts.length<shot.needed?`Tap ${shot.labels[shot.pts.length]}`:
   shot.kind==='corners'?'Your photo · check the 4 paper corners':shot.kind==='meas'?'Drag each point onto the edge of your foot':
   (shot.markers?'Sock markers found · points placed':(shot.sample?'Sample photo · drag to adjust':'Drag points to adjust'))}
@@ -740,12 +765,23 @@ function computeTop(){
   computeMeas();
   renderTopQuick();
 }
-/* 12 starting points just inside the paper's edge (mm): heel, one side, toe, other side. Toes point to the top of the paper. */
+/* 20 starting points (mm) in a big FOOT shape that fills the paper: heel, one side, toe tip, other side.
+   Toes point to the top of the paper; mirrored for the left foot. The user drags them in onto their own foot. */
+const FOOT_BEZ=[[[0,4],[-30,4],[-34,60],[-38,120]],[[-38,120],[-52,165],[-52,185],[-46,205]],[[-46,205],[-42,235],[-30,250],[-14,250]],
+  [[-14,250],[5,250],[25,238],[36,215]],[[36,215],[48,190],[50,165],[46,150]],[[46,150],[40,100],[38,50],[28,15]],[[28,15],[20,-2],[6,-2],[0,4]]];
+function footTemplate(n){
+  const P=[];FOOT_BEZ.forEach(([a,b,c,d],s)=>{for(let k=s?1:0;k<=60;k++){const t=k/60,u=1-t;
+    P.push([u*u*u*a[0]+3*u*u*t*b[0]+3*u*t*t*c[0]+t*t*t*d[0],u*u*u*a[1]+3*u*u*t*b[1]+3*u*t*t*c[1]+t*t*t*d[1]])}});
+  let ti=0;P.forEach((p,i)=>{if(p[1]>P[ti][1])ti=i});
+  const resample=(pts,m)=>{const L=[0];for(let i=1;i<pts.length;i++)L.push(L[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+    const out=[];for(let k=0;k<m;k++){const d=L[L.length-1]*k/m;let j=1;while(j<L.length-1&&L[j]<d)j++;const f=(d-L[j-1])/((L[j]-L[j-1])||1);
+      out.push([pts[j-1][0]+(pts[j][0]-pts[j-1][0])*f,pts[j-1][1]+(pts[j][1]-pts[j-1][1])*f])}return out};
+  const h=n/2;return resample(P.slice(0,ti+1),h).concat(resample(P.slice(ti),h));
+}
 function paperEdge(Wmm,Hmm){
-  const i=8,FS=[.12,.3,.5,.68,.83],port=Hmm>=Wmm;
-  const P=(along,side)=>port?[side==null?Wmm/2:side,Hmm-i-along*(Hmm-2*i)]:[Wmm-i-along*(Wmm-2*i),side==null?Hmm/2:side];
-  const lo=i,hi=(port?Wmm:Hmm)-i;
-  return [P(0,null),...FS.map(f=>P(f,lo)),P(1,null),...FS.slice().reverse().map(f=>P(f,hi))];
+  const i=8,T=footTemplate(20),xs=T.map(p=>p[0]),ys=T.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),port=Hmm>=Wmm;
+  return T.map(([x,y])=>{let fx=(x-x0)/(x1-x0),fy=(y-y0)/(y1-y0);if(st.foot==='L')fx=1-fx;
+    return port?[i+fx*(Wmm-2*i),Hmm-i-fy*(Hmm-2*i)]:[Wmm-i-fy*(Wmm-2*i),i+fx*(Hmm-2*i)]});
 }
 /* foot outline analysis on a flattened mask (1px = 1/S mm) */
 function analyzeMask(fm,W,H,ballFrac){
@@ -772,7 +808,7 @@ function analyzeMask(fm,W,H,ballFrac){
 }
 /* editable outline: heel, one side, toe, other side */
 function makeContour(A){
-  const FS=[.12,.3,.5,.68,.83],mid=i=>(A.lo[i]+A.hi[i])/2,hb=A.binAt(0),tb=A.binAt(1);
+  const FS=[.05,.14,.24,.35,.46,.57,.68,.79,.9],mid=i=>(A.lo[i]+A.hi[i])/2,hb=A.binAt(0),tb=A.binAt(1);
   const heelP=A.toPx(A.heelStart?A.tmin:A.tmax,mid(hb)),toeP=A.toPx(A.heelStart?A.tmax:A.tmin,mid(tb));
   const sideA=FS.map(f=>{const i=A.binAt(f);return A.toPx(A.tAt(i),A.lo[i])}),sideB=FS.map(f=>{const i=A.binAt(f);return A.toPx(A.tAt(i),A.hi[i])});
   return [heelP,...sideA,toeP,...sideB.reverse()];
